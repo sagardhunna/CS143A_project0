@@ -1,0 +1,2 @@
+- Do NOT make modifications to simulator.py as these changes will not be included in our submission. If we need to 
+make changes, we should make a copy of simulator.py and make those changes there.
