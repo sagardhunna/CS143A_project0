@@ -13,8 +13,9 @@ PID = int
 # It is only here for your convinience and can be modified however you see fit.
 class PCB:
     pid: PID
-
-    def __init__(self, pid: PID):
+    
+    #added priority
+    def __init__(self, pid: PID, priority: int):
         self.pid = pid
 
 # This class represents the Kernel of the simulation.
@@ -42,11 +43,33 @@ class Kernel:
     # priority is the priority of new_process.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def new_process_arrived(self, new_process: PID, priority: int) -> PID:
+        #invoke constructor
+        new_pcb = PCB(new_process, priority)
+        
+        #put in queue
+        self.ready_queue.append(new_pcb)
+        
+        #sorted the queue base on priority
+        self.ready_queue = deque(sorted(self.ready_queue, key=lambda pcb: (pcb.priority, pcb.pid)))
+        
+        
+        #switch to the new process
+        #With priority as another condition, after the or is condition for priority
+        if self.running == self.idle_pcb or new_pcb.priority < self.running.priority :
+            self.choose_next_process
         return self.running.pid
 
     # This method is triggered every time the current process performs an exit syscall.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_exit(self) -> PID:
+        
+        #interrupt the call
+        self.running = self.idle_pcb
+        
+        #make next decesion in a queue base on priority. FCFS doens't need this but priority does
+        self.choose_next_process()
+        
+        
         return self.running.pid
 
     # This method is triggered when the currently running process requests to change its priority.
@@ -63,8 +86,11 @@ class Kernel:
         if len(self.ready_queue) == 0:
                 return self.idle_pcb
         
+        #FCFS logic ez one.
         if self.scheduling_algorithm == "FCFS":
-            self.running = self.idle_pcb
+            self.running = self.ready_queue.popleft()
+            
+            
         elif self.scheduling_algorithm == "Priority":
             self.running = self.idle_pcb
         
