@@ -13,10 +13,12 @@ PID = int
 # It is only here for your convinience and can be modified however you see fit.
 class PCB:
     pid: PID
+    priority: int
     
     #added priority
     def __init__(self, pid: PID, priority: int):
         self.pid = pid
+        self.priority = priority
 
 # This class represents the Kernel of the simulation.
 # The simulator will create an instance of this object and use it to respond to syscalls and interrupts.
@@ -56,7 +58,7 @@ class Kernel:
         #switch to the new process
         #With priority as another condition, after the or is condition for priority
         if self.running == self.idle_pcb or new_pcb.priority < self.running.priority :
-            self.choose_next_process
+            self.choose_next_process()
         return self.running.pid
 
     # This method is triggered every time the current process performs an exit syscall.
@@ -87,6 +89,7 @@ class Kernel:
         self.ready_queue.append(self.running)
         
         #Gotta re-sort because of priority
+        self.ready_queue = deque(sorted(self.ready_queue, key = lambda pcb: (pcb.priority, pcb.pid)))
         
         # make next decision to choose
         self.choose_next_process()
