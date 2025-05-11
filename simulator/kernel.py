@@ -13,10 +13,12 @@ PID = int
 # It is only here for your convinience and can be modified however you see fit.
 class PCB:
     pid: PID
-    
-    #added priority
-    def __init__(self, pid: PID, priority: int):
+    priority: int
+    exiting: bool = False
+
+    def __init__(self, pid: PID, priority: int=None):
         self.pid = pid
+        self.priority = priority
 
 # This class represents the Kernel of the simulation.
 # The simulator will create an instance of this object and use it to respond to syscalls and interrupts.
@@ -33,7 +35,7 @@ class Kernel:
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def __init__(self, scheduling_algorithm: str):
         self.scheduling_algorithm = scheduling_algorithm
-        self.ready_queue = deque()
+        self.ready_queue = deque() # should be a heap for priority scheduling
         self.waiting_queue = deque()
         self.idle_pcb = PCB(0)
         self.running = self.idle_pcb
@@ -43,55 +45,22 @@ class Kernel:
     # priority is the priority of new_process.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def new_process_arrived(self, new_process: PID, priority: int) -> PID:
-        #invoke constructor
-        new_pcb = PCB(new_process, priority)
-        
-        #put in queue
-        self.ready_queue.append(new_pcb)
-        
-        #sorted the queue base on priority
-        self.ready_queue = deque(sorted(self.ready_queue, key=lambda pcb: (pcb.priority, pcb.pid)))
-        
-        
-        #switch to the new process
-        #With priority as another condition, after the or is condition for priority
-        if self.running == self.idle_pcb or new_pcb.priority < self.running.priority :
-            self.choose_next_process
+        self.ready_queue.append(PCB(new_process, priority))
+        self.choose_next_process() # should do nothing for FCFS, because context switching only occurs on process exit
         return self.running.pid
 
     # This method is triggered every time the current process performs an exit syscall.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_exit(self) -> PID:
-        
-        #interrupt the call
-        self.running = self.idle_pcb
-        
-        #make next decesion in a queue base on priority. FCFS doens't need this but priority does
+        self.running.exiting = True
         self.choose_next_process()
-        
-        
         return self.running.pid
 
     # This method is triggered when the currently running process requests to change its priority.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_set_priority(self, new_priority: int) -> PID:
-        #if the running process is idle, do nothing
-        if self.running == self.idle_pcb:
-            return self.running.pid
-        
-        #update the priority of the current running process
         self.running.priority = new_priority
-        
-        
-        #add back to the ready queue.
-        self.ready_queue.append(self.running)
-        
-        #Gotta re-sort because of priority
-        
-        # make next decision to choose
         self.choose_next_process()
-        
-        
         return self.running.pid
 
 
@@ -100,22 +69,25 @@ class Kernel:
     # Feel free to modify this method as you see fit.
     # It is not required to actually use this method but it is recommended.
     def choose_next_process(self):
-        if len(self.ready_queue) == 0:
-                return self.idle_pcb
+        # if len(self.ready_queue) == 0:
+        #         self.running = self.idle_pcb
+        #         return
         
-        #FCFS logic ez one.
+        # if no jobs are ready, continue running the same process
+        # if not self.ready_queue: return
+        
         if self.scheduling_algorithm == "FCFS":
-            self.running = self.ready_queue.popleft()
-            
-            
+            # if currently idle
+            if not self.running.pid:
+                if self.ready_queue:
+                    self.running = self.ready_queue.popleft()
+                    return
+                
+            # if currently exiting
+            if self.running.exiting:
+                if self.ready_queue:
+                    self.running = self.ready_queue.popleft()
+                else:
+                    self.running = self.idle_pcb
         elif self.scheduling_algorithm == "Priority":
-            #properly sort again
             self.running = self.idle_pcb
-            
-            #pick the highest priority (low-high)
-            self.running = self.ready_queue.popleft()
-            
-        return self.running
-            
-        
-
