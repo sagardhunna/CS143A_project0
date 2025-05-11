@@ -17,6 +17,7 @@ class PCB:
     exiting: bool = False
 
     def __init__(self, pid: PID, priority: int=None):
+
         self.pid = pid
         self.priority = priority
 
@@ -47,6 +48,7 @@ class Kernel:
     def new_process_arrived(self, new_process: PID, priority: int) -> PID:
         self.ready_queue.append(PCB(new_process, priority))
         self.choose_next_process() # should do nothing for FCFS, because context switching only occurs on process exit
+
         return self.running.pid
 
     # This method is triggered every time the current process performs an exit syscall.
@@ -60,6 +62,7 @@ class Kernel:
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_set_priority(self, new_priority: int) -> PID:
         self.running.priority = new_priority
+
         self.choose_next_process()
         return self.running.pid
 
