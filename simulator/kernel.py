@@ -45,8 +45,20 @@ class Kernel:
     # priority is the priority of new_process.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def new_process_arrived(self, new_process: PID, priority: int) -> PID:
-        self.ready_queue.append(PCB(new_process, priority))
-        self.choose_next_process() # should do nothing for FCFS, because context switching only occurs on process exit
+        #invoke constructor
+        new_pcb = PCB(new_process, priority)
+        
+        #put in queue
+        self.ready_queue.append(new_pcb)
+        
+        #sorted the queue base on priority
+        self.ready_queue = deque(sorted(self.ready_queue, key=lambda pcb: (pcb.priority, pcb.pid)))
+        
+        
+        #switch to the new process
+        #With priority as another condition, after the or is condition for priority
+        if self.running == self.idle_pcb or new_pcb.priority < self.running.priority :
+            self.choose_next_process()
         return self.running.pid
 
     # This method is triggered every time the current process performs an exit syscall.
@@ -60,6 +72,15 @@ class Kernel:
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_set_priority(self, new_priority: int) -> PID:
         self.running.priority = new_priority
+        
+        
+        #add back to the ready queue.
+        self.ready_queue.append(self.running)
+        
+        #Gotta re-sort because of priority
+        self.ready_queue = deque(sorted(self.ready_queue, key = lambda pcb: (pcb.priority, pcb.pid)))
+        
+        # make next decision to choose
         self.choose_next_process()
         return self.running.pid
 
