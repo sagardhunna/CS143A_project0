@@ -66,14 +66,6 @@ class Kernel:
     def syscall_set_priority(self, new_priority: int) -> PID:
         self.running.priority = new_priority
         
-        
-        #add back to the ready queue.
-        self.ready_queue.append(self.running)
-        
-        #Gotta re-sort because of priority
-        self.ready_queue = deque(sorted(self.ready_queue, key = lambda pcb: (pcb.priority, pcb.pid)))
-        
-        # make next decision to choose
         self.choose_next_process()
         return self.running.pid
 
