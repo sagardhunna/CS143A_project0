@@ -3,9 +3,7 @@
 # Members: Sagar Dhunna, Quan Tran, Aarav Shah
 
 
-
 from collections import deque
-import heapq
 
 # PID is just an integer, but it is used to make it clear when a integer is expected to be a valid PID.
 PID = int
@@ -16,6 +14,7 @@ class PCB:
 	pid: PID
 	priority: int
 	exiting: bool = False
+	runtime: int = 0
 
 	def __init__(self, pid: PID, priority: int=None):
 		self.pid = pid
@@ -36,10 +35,12 @@ class Kernel:
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def __init__(self, scheduling_algorithm: str, logger):
 		self.scheduling_algorithm = scheduling_algorithm
-		if scheduling_algorithm == "FCFS":
+		if scheduling_algorithm == "FCFS" or scheduling_algorithm == "RR":
 			self.ready_queue = deque()
 		elif scheduling_algorithm == "Priority":
 			self.ready_queue = []
+
+		self.logger = logger
 		self.waiting_queue = deque()
 		self.idle_pcb = PCB(0)
 		self.running = self.idle_pcb
@@ -88,6 +89,7 @@ class Kernel:
 					self.running = self.ready_queue.popleft()
 				else:
 					self.running = self.idle_pcb
+	 
 		elif self.scheduling_algorithm == "Priority":
 			if not self.running.pid: # first time adding a process, just need to pop whatever was latest to be inserted
 				if self.ready_queue:
@@ -112,6 +114,28 @@ class Kernel:
 						self.running = self.ready_queue.pop(0) # pop front of queue
 						self.ready_queue.append(curr_process) # add curr process back to queue because we are swapping context
 						return
+		elif self.scheduling_algorithm == "RR":
+			# if currently idle
+			if not self.running.pid:
+				if self.ready_queue:
+					self.running = self.ready_queue.popleft()
+					return
+
+			# if currently exiting
+			if self.running.exiting:
+				if self.ready_queue:
+					self.running = self.ready_queue.popleft()
+				else:
+					self.running = self.idle_pcb
+				return
+
+			# elapsed time >= 40ms
+			if self.running.runtime >= 40:
+				self.ready_queue.append(self.running)
+				self.running.runtime = 0
+				self.running = self.ready_queue.popleft()
+				return
+        
 					
 	# This method is triggered when the currently running process requests to initialize a new semaphore.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
@@ -149,4 +173,11 @@ class Kernel:
 	# Do not use real time to track how much time has passed as time is simulated.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def timer_interrupt(self) -> PID:
+		# for debugging only
+  		# self.logger.log("Timer interrupt") 
+		
+		self.running.runtime += 10
+		if self.scheduling_algorithm == "RR":
+			self.choose_next_process()
+   
 		return self.running.pid
