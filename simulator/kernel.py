@@ -30,64 +30,37 @@ class Kernel:
 	running: PCB
 	idle_pcb: PCB
 
-<<<<<<< HEAD
-    # Called before the simulation begins.
-    # Use this method to initilize any variables you need throughout the simulation.
-    # DO NOT rename or delete this method. DO NOT change its arguments.
-    def __init__(self, scheduling_algorithm: str):
-        self.scheduling_algorithm = scheduling_algorithm
-        self.ready_queue = deque()
-        self.waiting_queue = deque()
-        self.idle_pcb = PCB(0,30)
-        self.running = self.idle_pcb
-
-    # This method is triggered every time a new process has arrived.
-    # new_process is this process's PID.
-    # priority is the priority of new_process.
-    # DO NOT rename or delete this method. DO NOT change its arguments.
-    def new_process_arrived(self, new_process: PID, priority: int) -> PID:
-        new_pcb = PCB(new_process, priority)   #invoke PCB constructor
-        self.ready_queue.append(new_pcb)   #put in queue
-        self.ready_queue = deque(sorted(self.ready_queue, key=lambda pcb: (pcb.priority, pcb.pid))) #sorted by priority
-        
-        if self.running == self.idle_pcb or new_pcb.priority < self.running.priority :
-            self.choose_next_process()
-        return self.running.pid
-
-
-
-    # This method is triggered every time the current process performs an exit syscall.
-    # DO NOT rename or delete this method. DO NOT change its arguments.
-    def syscall_exit(self) -> PID:
-        self.running = self.idle_pcb #interrupt the call
-        self.choose_next_process() #make next decesion in a queue base on priority. FCFS doens't need this but priority does
-        return self.running.pid
-
-    # This method is triggered when the currently running process requests to change its priority.
-    # DO NOT rename or delete this method. DO NOT change its arguments.
-    def syscall_set_priority(self, new_priority: int) -> PID:
-        if self.running == self.idle_pcb: #if the running process is idle, do nothing
-            return self.running.pid
-        self.running.priority = new_priority #update the priority of the current running process
-        self.ready_queue.append(self.running) #add back to the ready queue.
-        self.ready_queue = deque(sorted(self.ready_queue, key = lambda pcb: (pcb.priority, pcb.pid)))
-        self.choose_next_process()
-        return self.running.pid
-=======
 	# Called before the simulation begins.
 	# Use this method to initilize any variables you need throughout the simulation.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
+ 
+ 
 	def __init__(self, scheduling_algorithm: str, logger):
 		self.scheduling_algorithm = scheduling_algorithm
-		if scheduling_algorithm == "FCFS" or scheduling_algorithm == "RR":
+		
+		if scheduling_algorithm == "Multilevel":
+			self.forground_queue = deque()  #RR
+			self.background_queue = deque() #FCFS
+			self.current_level = "Foreground"
+			self.level_runtime = 0 # tracking
+			
+		elif scheduling_algorithm == "FCFS" or scheduling_algorithm == "RR":
 			self.ready_queue = deque()
 		elif scheduling_algorithm == "Priority":
 			self.ready_queue = []
-
+			
 		self.logger = logger
 		self.waiting_queue = deque()
 		self.idle_pcb = PCB(0)
 		self.running = self.idle_pcb
+
+'''
+		self.logger = logger
+		self.waiting_queue = deque()
+		self.idle_pcb = PCB(0)
+		self.running = self.idle_pcb
+   '''     
+	
 
 	# This method is triggered every time a new process has arrived.
 	# new_process is this process's PID.
@@ -113,7 +86,6 @@ class Kernel:
 		
 		self.choose_next_process()
 		return self.running.pid
->>>>>>> origin/aarav
 
 
 	# This is where you can select the next process to run.
@@ -180,7 +152,7 @@ class Kernel:
 				self.running.runtime = 0
 				self.running = self.ready_queue.popleft()
 				return
-        
+		
 					
 	# This method is triggered when the currently running process requests to initialize a new semaphore.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
@@ -219,7 +191,7 @@ class Kernel:
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def timer_interrupt(self) -> PID:
 		# for debugging only
-  		# self.logger.log("Timer interrupt") 
+		  # self.logger.log("Timer interrupt") 
 		
 		self.running.runtime += 10
 		if self.scheduling_algorithm == "RR":
