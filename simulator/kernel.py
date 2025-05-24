@@ -101,13 +101,8 @@ class Kernel:
         #gotta check if we are in multilevel or not
         # use the correct queue base on self.current_level declare in init
         if self.scheduling_algorithm == "Multilevel":
-            if self.current_level == "Foreground":
-                queue = self.foreground_queue
-            else:
-                queue = self.background_queue
-                
-            #Check CPU status for multilevel
-            #if nothing running or idle, or the current process exit
+            queue = self.foreground_queue if self.current_level == "Foreground" else self.background_queue
+            
             if not self.running.pid or self.running.exiting:
                 if queue:
                     self.running = queue.popleft()
@@ -124,11 +119,15 @@ class Kernel:
                         self.running = self.foreground_queue.popleft()
                     else:
                         self.running = self.idle_pcb
-                    return
             
-        # FCFS akak background level. FCFS is non-preemtive so return to fcfs.
+        # FCFS akak background level. 
             elif self.current_level == "Background":
-                return  
+                if self.running.pid == 0 or self.running.exiting:
+                    if self.background_queue:
+                        self.running = self.backround_queue.popleft()
+                    else:
+                        self.running = self.idle_pcb
+            return  
             
             
             
@@ -230,35 +229,30 @@ class Kernel:
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def timer_interrupt(self) -> PID:
         # for debugging only
-          # self.logger.log("Timer interrupt") 
-        
+        # self.logger.log("Timer interrupt")
         self.running.runtime += 10
         
         if self.scheduling_algorithm == "Multilevel":
-            self.level_runtime +=10
-        
-        
-            if self.level_runtime >= 200:
-                if self.current_level == "Foreground":
-                    next_level = "Background"
-                    next_queue = self.background_queue
-                else:
-                    next_level ="Foreground"
-                    next_queue = self.foreground_queue
+            self.level_runtime += 10
             
-                if next_queue:
-                    self.current_level = next_level
+            if self.level_runtime >= 200:
+                other_level = "Background" if self.current_level == "Foreground" else "Foreground"
+                other_queue = self.background_queue if other_level == "Background" else self.foreground_queue
+                
+                if other_queue: #other level has process then switch
+                    self.current_level = other_level
                     self.level_runtime = 0
                     self.choose_next_process()
                     return self.running.pid
                 else:
                     self.level_runtime = 0
-
-            # If it's still in foreground,, check quantum
+                    
+            #still in foreground
             if self.current_level == "Foreground":
                 if self.running.runtime >= 40:
                     self.choose_next_process()
-                
+            return self.running.pid
+        
         elif self.scheduling_algorithm == "RR":
             if self.running.runtime >= 40:
                 self.choose_next_process()
