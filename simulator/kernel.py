@@ -237,17 +237,24 @@ class Kernel:
         if self.scheduling_algorithm == "Multilevel":
             self.level_runtime +=10 # level_runtime for tracking
         
-        # each level are allow 200ms
+        # each level is allowed 200ms
         if self.level_runtime >= 200:
             #switch foreground <-> background 
             if self.current_level == "Foreground":
-                self.current_level = "Background"
+                next_level = "Background"
+                next_queue = self.background_queue
             else:
                 self.current_level ="Foreground"
-                
-            self.level_runtime = 0 #reset
-            self.choose_next_process()
-            return self.running.pid
+                next_queue = self.foreground_queue
+            
+            if next_queue:    #switch levels only if other level has processes waiting
+                self.current_level = next_level
+                self.level_runtime = 0
+                self.choose_next_process()
+                return self.running.pid
+            else:
+                self.level_runtime = 0
+
         # If it's still in foreground,, check quantum
         if self.current_level == "Foreground":
             if self.running.runtime >= 40:
