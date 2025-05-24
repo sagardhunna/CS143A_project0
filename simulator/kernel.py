@@ -233,7 +233,27 @@ class Kernel:
           # self.logger.log("Timer interrupt") 
         
         self.running.runtime += 10
-        if self.scheduling_algorithm == "RR":
+        
+        if self.scheduling_algorithm == "Multilevel":
+            self.level_runtime +=10 # level_runtime for tracking
+        
+        # each level are allow 200ms
+        if self.level_runtime >= 200:
+            #switch foreground <-> background 
+            if self.current_level == "Foreground":
+                self.current_level = "Background"
+            else:
+                self.current_level ="Foreground"
+                
+            self.level_runtime = 0 #reset
             self.choose_next_process()
+            return self.running.pid
+        # If it's still in foreground,, check quantum
+        if self.current_level == "Foreground":
+            if self.running.runtime >= 40:
+                self.choose_next_process()
+                
+        if self.scheduling_algorithm == "RR":
+                self.choose_next_process()
    
         return self.running.pid
