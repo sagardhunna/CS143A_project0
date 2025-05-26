@@ -146,6 +146,7 @@ class Kernel:
 
 			# if currently waiting		
 			if self.running.waiting:
+				self.running.runtime = 0
 				if self.ready_queue:
 					self.running = self.ready_queue.popleft()
 				else:
