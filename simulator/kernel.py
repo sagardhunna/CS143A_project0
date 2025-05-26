@@ -4,6 +4,7 @@
 
 
 from collections import deque
+import heapq
 
 # PID is just an integer, but it is used to make it clear when a integer is expected to be a valid PID.
 PID = int
@@ -15,6 +16,7 @@ class PCB:
 	priority: int
 	exiting: bool = False
 	runtime: int = 0
+	waiting: bool = False
 
 	def __init__(self, pid: PID, priority: int=None):
 		self.pid = pid
@@ -25,10 +27,12 @@ class PCB:
 # DO NOT modify the name of this class or remove it.
 class Kernel:
 	scheduling_algorithm: str
+	logger: any
 	ready_queue: any
-	waiting_queue: deque[PCB]
-	running: PCB
+	waiting_queues: dict[int, list[tuple[PID, PCB]]]
 	idle_pcb: PCB
+	running: PCB
+	semaphores: dict[int, int]
 
 	# Called before the simulation begins.
 	# Use this method to initilize any variables you need throughout the simulation.
@@ -41,9 +45,10 @@ class Kernel:
 			self.ready_queue = []
 
 		self.logger = logger
-		self.waiting_queue = deque()
+		self.waiting_queues = {}
 		self.idle_pcb = PCB(0)
 		self.running = self.idle_pcb
+		self.semaphores = {}
 
 	# This method is triggered every time a new process has arrived.
 	# new_process is this process's PID.
@@ -82,7 +87,14 @@ class Kernel:
 				if self.ready_queue:
 					self.running = self.ready_queue.popleft()
 					return
-				
+ 
+			# if currently waiting		
+			if self.running.waiting:
+				if self.ready_queue:
+					self.running = self.ready_queue.popleft()
+				else:
+					self.running = self.idle_pcb
+   
 			# if currently exiting
 			if self.running.exiting:
 				if self.ready_queue:
@@ -114,12 +126,20 @@ class Kernel:
 						self.running = self.ready_queue.pop(0) # pop front of queue
 						self.ready_queue.append(curr_process) # add curr process back to queue because we are swapping context
 						return
+  
 		elif self.scheduling_algorithm == "RR":
 			# if currently idle
 			if not self.running.pid:
 				if self.ready_queue:
 					self.running = self.ready_queue.popleft()
 					return
+
+			# if currently waiting		
+			if self.running.waiting:
+				if self.ready_queue:
+					self.running = self.ready_queue.popleft()
+				else:
+					self.running = self.idle_pcb
 
 			# if currently exiting
 			if self.running.exiting:
@@ -135,21 +155,42 @@ class Kernel:
 				self.running.runtime = 0
 				self.running = self.ready_queue.popleft()
 				return
-        
+		
 					
 	# This method is triggered when the currently running process requests to initialize a new semaphore.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def syscall_init_semaphore(self, semaphore_id: int, initial_value: int):
+		self.semaphores[semaphore_id] = initial_value
+		self.waiting_queues[semaphore_id] = []
 		return
 	
 	# This method is triggered when the currently running process calls p() on an existing semaphore.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def syscall_semaphore_p(self, semaphore_id: int) -> PID:
+		# might need to wait
+		if self.semaphores[semaphore_id] <= 0:
+			heapq.heappush(self.waiting_queues[semaphore_id], (self.running.pid, self.running))
+			self.running.waiting = True
+   
+		# update semaphore value
+		self.semaphores[semaphore_id] -= 1
+
+		# might need context switch
+		self.choose_next_process()
 		return self.running.pid
 
 	# This method is triggered when the currently running process calls v() on an existing semaphore.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def syscall_semaphore_v(self, semaphore_id: int) -> PID:
+		# might need to wake up waiting process
+		if self.waiting_queues[semaphore_id]:
+			_, pcb = heapq.heappop(self.waiting_queues[semaphore_id])
+			pcb.waiting = False
+			self.ready_queue.append(pcb)
+   
+		# update semaphore value
+		self.semaphores[semaphore_id] += 1
+		
 		return self.running.pid
 
 	# This method is triggered when the currently running process requests to initialize a new mutex.
@@ -174,7 +215,8 @@ class Kernel:
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def timer_interrupt(self) -> PID:
 		# for debugging only
-  		# self.logger.log("Timer interrupt") 
+  		# self.logger.log("Timer interrupt")
+		# self.logger.log(f"s0: {self.semaphores}")
 		
 		self.running.runtime += 10
 		if self.scheduling_algorithm == "RR":
