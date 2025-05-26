@@ -2,7 +2,7 @@
 # Group id: 62
 # Members: Sagar Dhunna, Quan Tran, Aarav Shah
 
-
+from typing import Callable
 from collections import deque
 import heapq
 
@@ -22,6 +22,12 @@ class PCB:
 		self.pid = pid
 		self.priority = priority
 
+	def __eq__(self, other):
+		return self.pid == other.pid
+
+	def __lt__(self, other):
+		return self.pid < other.pid
+
 # This class represents the Kernel of the simulation.
 # The simulator will create an instance of this object and use it to respond to syscalls and interrupts.
 # DO NOT modify the name of this class or remove it.
@@ -33,6 +39,7 @@ class Kernel:
 	idle_pcb: PCB
 	running: PCB
 	semaphores: dict[int, int]
+	sem_key: Callable[[PCB], int]
 
 	# Called before the simulation begins.
 	# Use this method to initilize any variables you need throughout the simulation.
@@ -41,8 +48,10 @@ class Kernel:
 		self.scheduling_algorithm = scheduling_algorithm
 		if scheduling_algorithm == "FCFS" or scheduling_algorithm == "RR":
 			self.ready_queue = deque()
+			self.sem_key = lambda pcb: pcb.pid
 		elif scheduling_algorithm == "Priority":
 			self.ready_queue = []
+			self.sem_key = lambda pcb: pcb.priority
 
 		self.logger = logger
 		self.waiting_queues = {}
@@ -94,6 +103,7 @@ class Kernel:
 					self.running = self.ready_queue.popleft()
 				else:
 					self.running = self.idle_pcb
+				return
    
 			# if currently exiting
 			if self.running.exiting:
@@ -107,9 +117,9 @@ class Kernel:
 				if self.ready_queue:
 					self.running = self.ready_queue.pop(0)
 					return
-			elif self.running.exiting:
+			elif self.running.exiting or self.running.waiting:
 				# if we are exiting a process, we need to either switch to next in line process (should be sorted as we sort everytime a new process is inserted) or switch back to idle
-				if len(self.ready_queue) >= 1:
+				if self.ready_queue:
 					# sort our array based on priority
 					self.ready_queue.sort(key=lambda process: process.priority)
 					self.running = self.ready_queue.pop(0)
@@ -119,7 +129,7 @@ class Kernel:
 				# sort our array based on priority
 				self.ready_queue.sort(key=lambda process: process.priority)
 				# compare current running process' priority, with priority or process at front of queue
-				if len(self.ready_queue) >= 1:
+				if self.ready_queue:
 					curr_process = self.running
 					next_process = self.ready_queue[0]
 					if next_process.priority < curr_process.priority: # if next in line has a higher priority, we will switch context and add current to queue, otherwise do nothing
@@ -169,7 +179,7 @@ class Kernel:
 	def syscall_semaphore_p(self, semaphore_id: int) -> PID:
 		# might need to wait
 		if self.semaphores[semaphore_id] <= 0:
-			heapq.heappush(self.waiting_queues[semaphore_id], (self.running.pid, self.running))
+			heapq.heappush(self.waiting_queues[semaphore_id], (self.sem_key(self.running), self.running))
 			self.running.waiting = True
    
 		# update semaphore value
@@ -190,6 +200,10 @@ class Kernel:
    
 		# update semaphore value
 		self.semaphores[semaphore_id] += 1
+  
+		# if priority, might need context switch
+		if self.scheduling_algorithm == "Priority":
+			self.choose_next_process()
 		
 		return self.running.pid
 
