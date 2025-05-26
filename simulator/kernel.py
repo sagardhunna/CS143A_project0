@@ -229,7 +229,7 @@ class Kernel:
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def timer_interrupt(self) -> PID:
 		# for debugging only
-  		# self.logger.log("Timer interrupt")
+		# self.logger.log("Timer interrupt")
 		# self.logger.log(f"s0: {self.semaphores}")
 		
 		self.running.runtime += 10
