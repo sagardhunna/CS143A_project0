@@ -40,6 +40,8 @@ class Kernel:
 	running: PCB
 	semaphores: dict[int, int]
 	sem_key: Callable[[PCB], int]
+	mutexes: dict[int, int]
+	mut_key: Callable[[PCB], int]
 
 	# Called before the simulation begins.
 	# Use this method to initilize any variables you need throughout the simulation.
@@ -49,15 +51,18 @@ class Kernel:
 		if scheduling_algorithm == "FCFS" or scheduling_algorithm == "RR":
 			self.ready_queue = deque()
 			self.sem_key = lambda pcb: pcb.pid
+			self.mut_key = lambda pcb: pcb.pid
 		elif scheduling_algorithm == "Priority":
 			self.ready_queue = []
 			self.sem_key = lambda pcb: pcb.priority
+			self.mut_key = lambda pcb: pcb.priority
 
 		self.logger = logger
 		self.waiting_queues = {}
 		self.idle_pcb = PCB(0)
 		self.running = self.idle_pcb
 		self.semaphores = {}
+		self.mutexes = {}
 
 	# This method is triggered every time a new process has arrived.
 	# new_process is this process's PID.
@@ -211,17 +216,41 @@ class Kernel:
 	# This method is triggered when the currently running process requests to initialize a new mutex.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def syscall_init_mutex(self, mutex_id: int):
+		self.mutexes[mutex_id] = 1
+		self.waiting_queues[mutex_id] = []
 		return
 
 	# This method is triggered when the currently running process calls lock() on an existing mutex.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def syscall_mutex_lock(self, mutex_id: int) -> PID:
-		return self.running.pid
+		# might need to wait
+		if self.mutexes[mutex_id] <= 0:
+			heapq.heappush(self.waiting_queues[mutex_id], (self.mut_key(self.running), self.running))
+			self.running.waiting = True
 
+		# update mutex value
+		self.mutexes[mutex_id] -= 1
+  
+		# might need context switch
+		self.choose_next_process()
+		return self.running.pid
 
 	# This method is triggered when the currently running process calls unlock() on an existing mutex.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def syscall_mutex_unlock(self, mutex_id: int) -> PID:
+		# might need to wake up waiting process
+		if self.waiting_queues[mutex_id]:
+			_, pcb = heapq.heappop(self.waiting_queues[mutex_id])
+			pcb.waiting = False
+			self.ready_queue.append(pcb)
+
+		# update mutex value
+		self.mutexes[mutex_id] += 1
+  
+		# if priority, might need context switch
+		if self.scheduling_algorithm == "Priority":
+			self.choose_next_process()
+  
 		return self.running.pid
 
 	# This function represents the hardware timer interrupt.
