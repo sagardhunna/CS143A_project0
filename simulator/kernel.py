@@ -17,10 +17,12 @@ class PCB:
 	exiting: bool = False
 	runtime: int = 0
 	waiting: bool = False
+	process_type: str
 
-	def __init__(self, pid: PID, priority: int=None):
+	def __init__(self, pid: PID, priority: int=None, process_type: str=""):
 		self.pid = pid
 		self.priority = priority
+		self.process_type = process_type
 
 	def __eq__(self, other):
 		return self.pid == other.pid
@@ -35,6 +37,8 @@ class Kernel:
 	scheduling_algorithm: str
 	logger: any
 	ready_queue: any
+	foreground_queue: any
+	background_queue: any
 	waiting_queues: dict[int, list[tuple[PID, PCB]]]
 	idle_pcb: PCB
 	running: PCB
@@ -42,6 +46,8 @@ class Kernel:
 	sem_key: Callable[[PCB], int]
 	mutexes: dict[int, int]
 	mut_key: Callable[[PCB], int]
+	level_runtime: int = 0
+	multilevel_scheduling_algorithm: str = ""
 
 	# Called before the simulation begins.
 	# Use this method to initilize any variables you need throughout the simulation.
@@ -63,13 +69,27 @@ class Kernel:
 		self.running = self.idle_pcb
 		self.semaphores = {}
 		self.mutexes = {}
+		self.foreground_queue = deque()
+		self.background_queue = deque()
+		
 
 	# This method is triggered every time a new process has arrived.
 	# new_process is this process's PID.
 	# priority is the priority of new_process.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def new_process_arrived(self, new_process: PID, priority: int, process_type: str) -> PID:
-		self.ready_queue.append(PCB(new_process, priority)) # everytime a process arrives, add it to the right of our queue
+		if self.scheduling_algorithm == "Multilevel": 
+			pcb = PCB(new_process, priority, process_type)
+			if process_type == "Foreground":
+				self.foreground_queue.append(pcb)
+			else:
+				self.background_queue.append(pcb)
+		else:
+			self.ready_queue.append(PCB(new_process, priority)) # everytime a process arrives, add it to the right of our queue
+		self.logger.log(
+				f"FGQ: {[pcb.pid for pcb in self.foreground_queue]}  "
+				f"-- BGQ: {[pcb.pid for pcb in self.background_queue]}"
+			)		
 		self.choose_next_process() # should do nothing for FCFS, because context switching only occurs on process exit
 
 		return self.running.pid
@@ -95,7 +115,46 @@ class Kernel:
 	# Feel free to modify this method as you see fit.
 	# It is not required to actually use this method but it is recommended.
 	def choose_next_process(self):
-		if self.scheduling_algorithm == "FCFS":
+     
+		if self.scheduling_algorithm == "Multilevel":
+			# choose a process if we are idle
+			if not self.running.pid:
+				if self.foreground_queue:
+					self.multilevel_scheduling_algorithm = "RR"
+					self.ready_queue = self.foreground_queue
+					self.level_runtime = 0
+				elif self.background_queue:
+					self.multilevel_scheduling_algorithm = "FCFS"
+					self.ready_queue = self.background_queue
+					self.level_runtime = 0
+     
+			# if we are exiting at the moment
+			if self.running.exiting:
+				if self.running.process_type == "Foreground" and not self.foreground_queue:
+					# nothing to do if foreground queue wasn't empty, but since it is we need to switch
+					self.multilevel_scheduling_algorithm = "FCFS"
+					self.running = self.idle_pcb
+					self.ready_queue = self.background_queue
+					self.level_runtime = 0
+					self.logger.log("foreground is completely empty so only do background")
+				elif self.running.process_type == "Background" and not self.background_queue:
+					# same as above
+					self.multilevel_scheduling_algorithm = "RR"
+					self.running = self.idle_pcb
+					self.ready_queue = self.foreground_queue
+					self.level_runtime = 0
+					self.logger.log("background is completely empty so only do foreground")
+				elif not self.background_queue and not self.foreground_queue:
+					self.logger.log("both BGQ and FGQ are empty!")
+			
+			if self.running.process_type == "Foreground":
+				self.multilevel_scheduling_algorithm = "RR"
+				self.ready_queue = self.foreground_queue
+			elif self.running.process_type == "Background":
+				self.multilevel_scheduling_algorithm = "FCFS"
+				self.ready_queue = self.background_queue
+     
+		if self.scheduling_algorithm == "FCFS" or self.multilevel_scheduling_algorithm == "FCFS":
 			# if currently idle
 			if not self.running.pid:
 				if self.ready_queue:
@@ -142,7 +201,7 @@ class Kernel:
 						self.ready_queue.append(curr_process) # add curr process back to queue because we are swapping context
 						return
   
-		elif self.scheduling_algorithm == "RR":
+		elif self.scheduling_algorithm == "RR" or self.multilevel_scheduling_algorithm == "RR":
 			# if currently idle
 			if not self.running.pid:
 				if self.ready_queue:
@@ -261,9 +320,41 @@ class Kernel:
 		# for debugging only
 		# self.logger.log("Timer interrupt")
 		# self.logger.log(f"s0: {self.semaphores}")
-		
+		self.level_runtime += 10
 		self.running.runtime += 10
-		if self.scheduling_algorithm == "RR":
+  
+		if self.scheduling_algorithm == "Multilevel" and self.level_runtime >= 200: # can do a switch if needed
+			self.level_runtime = 0
+			self.logger.log(
+				f"FGQ: {[pcb.pid for pcb in self.foreground_queue]}  "
+				f"-- BGQ: {[pcb.pid for pcb in self.background_queue]}"
+			)
+			if self.running.process_type == "Foreground" and len(self.background_queue) != 0:
+				self.logger.log(f'Time is: {self.level_runtime} and we are switching to BG')
+				self.logger.log(f'running: {self.running.pid} time: {self.running.runtime}')
+				#self.running.runtime = 0
+				self.logger.log(f'pausing: {self.running.pid} with runtime: {self.running.runtime}')
+				
+				if self.running.runtime >= 40:
+					self.running.runtime = 0
+					self.foreground_queue.append(self.running)
+				else:
+					self.foreground_queue.appendleft(self.running)
+				self.ready_queue = self.background_queue
+				self.running = self.ready_queue.popleft()
+				self.multilevel_scheduling_algorithm = "FCFS"
+    
+			elif self.running.process_type == "Background" and len(self.foreground_queue) != 0:
+				self.logger.log(f'Time is: {self.level_runtime} and we are switching to FG')
+				self.background_queue.appendleft(self.running)
+				self.ready_queue = self.foreground_queue
+				self.running = self.ready_queue.popleft()
+				self.logger.log(f'Currently running {self.running.pid}')
+				self.multilevel_scheduling_algorithm = "RR"
+			
+
+		
+		if self.scheduling_algorithm == "RR" or self.multilevel_scheduling_algorithm == "RR":
 			self.choose_next_process()
    
 		return self.running.pid
