@@ -52,7 +52,7 @@ class Kernel:
 	# Called before the simulation begins.
 	# Use this method to initilize any variables you need throughout the simulation.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
-	def __init__(self, scheduling_algorithm: str, logger):
+	def __init__(self, scheduling_algorithm: str, logger, mmu: "MMU", memory_size: int):
 		self.scheduling_algorithm = scheduling_algorithm
 		if scheduling_algorithm == "FCFS" or scheduling_algorithm == "RR":
 			self.ready_queue = deque()
@@ -64,6 +64,12 @@ class Kernel:
 			self.mut_key = lambda pcb: pcb.priority
 
 		self.logger = logger
+		self.mmu = mmu
+		self.memory_size = memory_size
+		self.memory_map = [] # memory segments
+		self.RESERVED = 10 * 1024 * 1024
+  
+  
 		self.waiting_queues = {}
 		self.idle_pcb = PCB(0)
 		self.running = self.idle_pcb
