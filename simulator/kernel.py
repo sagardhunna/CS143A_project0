@@ -83,7 +83,13 @@ class Kernel:
 	# new_process is this process's PID.
 	# priority is the priority of new_process.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
-	def new_process_arrived(self, new_process: PID, priority: int, process_type: str) -> PID:
+	def new_process_arrived(self, new_process: PID, priority: int, process_type: str, memory_needed) -> PID:
+		base = self._best_fit_allocate(new_process, memory_needed)
+		if base is None:
+			return -1 # not enough memory -> not accepting process
+		self.mmu.set_mapping(new_process, base, memory_needed)
+  
+  
 		if self.scheduling_algorithm == "Multilevel": 
 			pcb = PCB(new_process, priority, process_type)
 			if process_type == "Foreground":
@@ -106,6 +112,28 @@ class Kernel:
 		self.running.exiting = True # sets current process to not be running
 		self.choose_next_process() # select new process to run as current has completed
 		return self.running.pid
+
+	def _best_fit_allocate(self, pid: PID, size: int) -> int | None:
+		holes = []
+		prev_end = self.RESERVED
+		self.memory_map.sort(key= lambda seg: seg["base"])
+  
+		for seg in self.memory_map:
+			hole_size = seg["base"] - prev_end
+			if hole_size >= size:
+				holes.append((hole_size, prev_end))
+			prev_end = seg["base"] + seg["limit"]
+   
+		if self.memory_size - prev_end >= size:
+			holes.append((self.memory_size - prev_end, prev_end))
+   
+		if not holes:
+			return None
+		_, best_base = sorted(holes)[0]
+		self.memory_map.append({
+			"pid": pid, "base": best_base, "limit": size
+		})
+		return best_base
 
 	# This method is triggered when the currently running process requests to change its priority.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
@@ -364,3 +392,21 @@ class Kernel:
 			self.choose_next_process()
    
 		return self.running.pid
+
+
+class MMU: #memory management class
+    def __init__(self, logger):
+        self.logger = logger
+        self.segment_table = {} # map pid -> base
+        
+    def set_mapping(self, pid: int, base: int, limit: int):
+        self.segment_table[pid] = (base, limit)
+        
+    def translate(self, address: int, pid: int) -> int | None:
+        if pid not in self.segment_table:
+            return None
+        base, limit = self.segment_table[pid]
+        virtual_base = 0X20000000
+        if address < virtual_base or address >= virtual_base + limit:
+            return None
+        return base + (address - virtual_base)
