@@ -84,7 +84,7 @@ class Kernel:
 	# priority is the priority of new_process.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def new_process_arrived(self, new_process: PID, priority: int, process_type: str, memory_needed) -> PID:
-		base = self._best_fit_allocate(new_process, memory_needed)
+		base = self.best_fit_allocate(new_process, memory_needed)
 		if base is None:
 			return -1 # not enough memory -> not accepting process
 		self.mmu.set_mapping(new_process, base, memory_needed)
@@ -98,10 +98,10 @@ class Kernel:
 				self.background_queue.append(pcb)
 		else:
 			self.ready_queue.append(PCB(new_process, priority)) # everytime a process arrives, add it to the right of our queue
-		self.logger.log(
-				f"FGQ: {[pcb.pid for pcb in self.foreground_queue]}  "
-				f"-- BGQ: {[pcb.pid for pcb in self.background_queue]}"
-			)		
+		# self.logger.log(
+		# 		f"FGQ: {[pcb.pid for pcb in self.foreground_queue]}  "
+		# 		f"-- BGQ: {[pcb.pid for pcb in self.background_queue]}"
+		# 	)		
 		self.choose_next_process() # should do nothing for FCFS, because context switching only occurs on process exit
 
 		return self.running.pid
@@ -109,11 +109,12 @@ class Kernel:
 	# This method is triggered every time the current process performs an exit syscall.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
 	def syscall_exit(self) -> PID:
+		self.free_memory(self.running.pid)
 		self.running.exiting = True # sets current process to not be running
 		self.choose_next_process() # select new process to run as current has completed
 		return self.running.pid
 
-	def _best_fit_allocate(self, pid: PID, size: int) -> int | None:
+	def best_fit_allocate(self, pid: PID, size: int) -> int | None:
 		holes = []
 		prev_end = self.RESERVED
 		self.memory_map.sort(key= lambda seg: seg["base"])
@@ -134,6 +135,9 @@ class Kernel:
 			"pid": pid, "base": best_base, "limit": size
 		})
 		return best_base
+
+	def free_memory(self,pid: PID):
+		self.memory_map = [seg for seg in self.memory_map if seg["pid"] != pid]
 
 	# This method is triggered when the currently running process requests to change its priority.
 	# DO NOT rename or delete this method. DO NOT change its arguments.
@@ -359,10 +363,10 @@ class Kernel:
   
 		if self.scheduling_algorithm == "Multilevel" and self.level_runtime >= 200: # can do a switch if needed
 			self.level_runtime = 0
-			self.logger.log(
-				f"FGQ: {[pcb.pid for pcb in self.foreground_queue]}  "
-				f"-- BGQ: {[pcb.pid for pcb in self.background_queue]}"
-			)
+			# self.logger.log(
+			# 	f"FGQ: {[pcb.pid for pcb in self.foreground_queue]}  "
+			# 	f"-- BGQ: {[pcb.pid for pcb in self.background_queue]}"
+			# )
 			if self.running.process_type == "Foreground" and len(self.background_queue) != 0:
 				self.logger.log(f'Time is: {self.level_runtime} and we are switching to BG')
 				self.logger.log(f'running: {self.running.pid} time: {self.running.runtime}')
